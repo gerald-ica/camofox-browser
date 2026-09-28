@@ -35,7 +35,7 @@ describe('session cleanup after tab reaper', () => {
           session.tabGroups.delete(listItemId);
         }
       }
-      if (session.tabGroups.size === 0) {
+      if (session.tabGroups.size === 0 && !session.pageLeases?.size) {
         session._closing = true;
         onSessionEmpty(userId);
         sessions.delete(userId);
@@ -74,6 +74,24 @@ describe('session cleanup after tab reaper', () => {
     expect(destroyed).toEqual(['tab-1', 'tab-2']);
     expect(emptied).toEqual(['user-1']);
     expect(sessions.size).toBe(0);
+  });
+
+  test('empty session with a page lease is NOT cleaned up', () => {
+    const sessions = new Map();
+    const session = { tabGroups: new Map(), pageLeases: new Set([{}]), lastAccess: Date.now() };
+    sessions.set('user-1', session);
+    const emptied = [];
+
+    runTabReaper({
+      sessions,
+      TAB_INACTIVITY_MS: 300_000,
+      destroyTab: () => {},
+      onSessionEmpty: (userId) => emptied.push(userId),
+    });
+
+    expect(emptied).toEqual([]);
+    expect(sessions.get('user-1')).toBe(session);
+    expect(session._closing).toBeUndefined();
   });
 
   test('reaped session gets _closing flag set before deletion', () => {
@@ -326,7 +344,7 @@ describe('session expiry _closing flag', () => {
   function runSessionExpiry({ sessions, SESSION_TIMEOUT_MS, onExpired }) {
     const now = Date.now();
     for (const [userId, session] of sessions) {
-      if (now - session.lastAccess > SESSION_TIMEOUT_MS) {
+      if (SESSION_TIMEOUT_MS > 0 && now - session.lastAccess > SESSION_TIMEOUT_MS) {
         session._closing = true;
         onExpired(userId);
         sessions.delete(userId);
@@ -351,6 +369,20 @@ describe('session expiry _closing flag', () => {
     expect(sessions.size).toBe(0);
   });
 
+  test('a zero timeout does not expire sessions', () => {
+    const sessions = new Map();
+    const session = { tabGroups: new Map(), lastAccess: Date.now() - 600_000 };
+    sessions.set('user-1', session);
+
+    runSessionExpiry({
+      sessions,
+      SESSION_TIMEOUT_MS: 0,
+      onExpired: () => { throw new Error('should not expire'); },
+    });
+
+    expect(sessions.size).toBe(1);
+    expect(session._closing).toBeUndefined();
+  });
   test('active session is NOT expired or flagged', () => {
     const sessions = new Map();
     const session = { tabGroups: new Map(), lastAccess: Date.now() };

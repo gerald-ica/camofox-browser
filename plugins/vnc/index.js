@@ -46,12 +46,14 @@
 
 import { resolveVncConfig, startWatcher } from './vnc-launcher.js';
 import { requireAuth } from '../../lib/auth.js';
+import { removeXvfbDisplayFiles } from '../../lib/tmp-cleanup.js';
 
 export async function register(app, ctx, pluginConfig = {}) {
   const { events, config, log, sessions, VirtualDisplay, safeError } = ctx;
+  const settings = ctx.plugin?.settings || pluginConfig;
 
-  // Resolve all config (env vars + pluginConfig) via the launcher module
-  const vncConfig = resolveVncConfig(pluginConfig);
+  // Resolve all config (env vars + plugin settings) via the launcher module
+  const vncConfig = resolveVncConfig(settings);
 
   if (!vncConfig.enabled) {
     log('info', 'vnc plugin: disabled (set ENABLE_VNC=1 or plugins.vnc.enabled=true)');
@@ -72,10 +74,21 @@ export async function register(app, ctx, pluginConfig = {}) {
       }
       return args;
     }
+
+    kill() {
+      const proc = this.proc;
+      if (!proc || this.xvfbDisplayFilesCleanupRegistered) return super.kill();
+
+      this.xvfbDisplayFilesCleanupRegistered = true;
+      const cleanup = () => removeXvfbDisplayFiles(this.display);
+      if (proc.exitCode === null) proc.once('exit', cleanup);
+      else cleanup();
+      return super.kill();
+    }
   }
 
-  ctx.createVirtualDisplay = () => new VncVirtualDisplay();
-  log('info', 'vnc plugin: overriding Xvfb resolution', { resolution });
+  ctx.plugin.registerVirtualDisplayProvider(() => new VncVirtualDisplay());
+  log('info', 'vnc plugin: registered Xvfb display provider', { resolution });
 
   // --- VNC watcher process ---
   log('info', 'vnc plugin enabled', {

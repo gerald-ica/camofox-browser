@@ -1,6 +1,6 @@
 {
   "name": "@askjo/camofox-browser",
-  "version": "1.13.0",
+  "version": "1.17.0",
   "description": "Headless browser automation server and OpenClaw plugin for AI agents - anti-detection, element refs, and session isolation",
   "type": "module",
   "main": "server.js",
@@ -36,37 +36,38 @@
   },
   "files": [
     "server.js",
-    "lib/",
-    "plugins/",
-    "camofox.config.json",
-    "plugin.ts",
     "plugin.js",
-    "dist/plugin.js",
-    "tsconfig.json",
     "openclaw.plugin.json",
-    "bin/",
-    "scripts/",
-    "run.sh",
-    "Dockerfile",
-    "README.md",
-    "LICENSE",
-    "AGENTS.md",
-    "!**/*.test.js",
-    "!**/*.test.ts",
-    "!**/*.spec.js"
+    "camofox.config.json",
+    "bin/camofox-browser.js",
+    "lib/",
+    "mcp/server.mjs",
+    "mcp/lib/config.mjs",
+    "mcp/lib/cookies.mjs",
+    "mcp/lib/tool-contracts.mjs",
+    "plugins/persistence/index.js",
+    "plugins/vnc/index.js",
+    "plugins/vnc/plugin.json",
+    "plugins/vnc/spawn.js",
+    "plugins/vnc/vnc-launcher.js",
+    "plugins/vnc/vnc-watcher.sh",
+    "plugins/vnc/vnc-watcher-lib.sh",
+    "plugins/youtube/index.js",
+    "plugins/youtube/youtube.js",
+    "postinstall.js"
   ],
   "openclaw": {
     "extensions": [
-      "plugin.ts"
+      "plugin.js"
     ],
     "runtimeExtensions": [
       "plugin.js"
     ],
     "compat": {
-      "pluginApi": ">=2026.3.24-beta.2"
+      "pluginApi": ">=2026.9.4"
     },
     "build": {
-      "openclawVersion": "2026.5.3"
+      "openclawVersion": "2026.9.4"
     },
     "tools": [
       {
@@ -119,32 +120,68 @@
     "build": "tsc -p . || true; mkdir -p dist && cp plugin.js dist/plugin.js",
     "prepublishOnly": "npm run build",
     "start": "node server.js",
-    "test": "NODE_OPTIONS='--experimental-vm-modules' jest --runInBand --forceExit",
+    "mcp": "node mcp/server.mjs",
+    "test:mcp": "npm ci --prefix mcp && node scripts/test-mcp.mjs && node scripts/test-mcp-package.mjs",
+    "test:unit": "NODE_OPTIONS='--experimental-vm-modules' jest --runInBand --forceExit tests/unit",
+    "test": "npm run test:unit && npm run test:e2e && npm run test:plugins",
     "test:e2e": "NODE_OPTIONS='--experimental-vm-modules' jest --config jest.config.e2e.cjs --runInBand --forceExit",
     "test:plugins": "NODE_OPTIONS='--experimental-vm-modules' jest --forceExit plugins/",
     "test:live": "RUN_LIVE_TESTS=1 NODE_OPTIONS='--experimental-vm-modules' jest --runInBand --forceExit tests/live",
     "test:debug": "DEBUG_SERVER=1 NODE_OPTIONS='--experimental-vm-modules' jest --runInBand --forceExit",
-    "plugin": "node scripts/plugin.js",
     "generate-openapi": "node scripts/generate-openapi.js",
     "version:sync": "node scripts/sync-version.js",
-    "version": "node scripts/sync-version.js && node scripts/generate-openapi.js && git add openclaw.plugin.json openapi.json",
-    "postinstall": "node scripts/postinstall.js",
+    "version": "node scripts/sync-version.js && node scripts/generate-openapi.js && git add openclaw.plugin.json mcp/package.json mcp/package-lock.json openapi.json",
+    "postinstall": "node postinstall.js",
     "fetch-bin": "npx camoufox-js fetch"
   },
   "dependencies": {
+    "better-sqlite3": "13.0.1",
     "camoufox-js": "^0.12.0",
     "express": "^5.2.1",
     "playwright-core": "^1.63.0",
     "prom-client": "^15.1.3",
     "swagger-jsdoc": "^6.3.0"
   },
+  "optionalDependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0"
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "jest": "^29.7.0",
+    "jest": "^30.4.2",
+    "openclaw": "2026.9.4",
     "pngjs": "^7.0.0",
     "typescript": "^5.7.0"
   },
+  "overrides": {
+    "@jest/reporters": {
+      "glob": "13.0.6"
+    },
+    "babel-plugin-istanbul": {
+      "test-exclude": "8.0.0"
+    },
+    "jest-config": {
+      "glob": "13.0.6"
+    },
+    "jest-runtime": {
+      "glob": "13.0.6"
+    },
+    "swagger-jsdoc": {
+      "glob": "13.0.6"
+    },
+    "qs": "6.16.0",
+    "fast-uri": "3.1.7",
+    "hono": "4.13.5"
+  },
   "bin": {
-    "camofox-browser": "./bin/camofox-browser.js"
+    "camofox-browser": "./bin/camofox-browser.js",
+    "camofox-browser-mcp": "./mcp/server.mjs"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.9.4"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
   }
 }
