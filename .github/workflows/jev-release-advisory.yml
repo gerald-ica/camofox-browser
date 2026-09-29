@@ -1,0 +1,40 @@
+# Release advisory — Jev risk note on published releases (fail-open, commit comment).
+name: Jev release advisory
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  advisory:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Score release with Jev
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.event.release.tag_name }}
+          NAME: ${{ github.event.release.name }}
+          BODY: ${{ github.event.release.body }}
+        run: |
+          COMMITS=$(gh api "repos/$REPO/compare/$TAG~1...$TAG" --jq '.commits[] | .commit.message' 2>/dev/null | head -c 6000 || true)
+          PAYLOAD=$(jq -n --arg t "$TAG" --arg n "$NAME" --arg b "$BODY" --arg c "$COMMITS" '{
+            state: {tag: $t, release_name: $n, release_notes: $b, commits: $c},
+            model: "jev-latest",
+            questions: {
+              risky_release: {type: "noul", instructions: "Does this release look accidental or risky (version/tag mismatch, missing description, unexpected or breaking content relative to its stated purpose)?"},
+              notes_quality: {type: "score", instructions: "How useful are these release notes to a user deciding whether to upgrade?", criteria: ["absent or empty", "minimal", "adequate", "clear and complete"]}
+            }}')
+          RESP=$(curl -sf --max-time 45 https://api.typesafe.ai/v1/systemone \
+            -H "Authorization: Bearer ${{ secrets.TYPESAFE_API_KEY }}" \
+            -H "Content-Type: application/json" -d "$PAYLOAD") || { echo "Jev unavailable; skip (fail-open)"; exit 0; }
+          RISKY=$(echo "$RESP" | jq -r '.answers.risky_release.noul')
+          NOTES=$(echo "$RESP" | jq -r '.answers.notes_quality.score')
+          echo "risky=$RISKY notes_quality=$NOTES" >> "$GITHUB_STEP_SUMMARY"
+          if awk "BEGIN{exit !($RISKY >= 0.7)}"; then
+            SHA=$(gh api "repos/$REPO/git/ref/tags/$TAG" --jq '.object.sha' 2>/dev/null)
+            gh api -X POST "repos/$REPO/commits/$SHA/comments" -f body="⚠️ **Jev release advisory**: risky_release=${RISKY} · notes_quality=${NOTES}/3 for $TAG — review this release." >/dev/null 2>&1 || true
+          fi
